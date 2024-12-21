@@ -29,7 +29,7 @@ class DynamicWeightAdapter:
             key = key.unsqueeze(0)      # Shape: (1, d)
 
         # Compute the raw modulation matrix via outer product
-        modulation_raw = torch.matmul(query.T, key)  # Shape: (d, d)
+        modulation_raw = torch.matmul(query.mT, key)  # Shape: (d, d)
 
         # Apply softmax to normalize the modulation tensor
         modulation = F.softmax(modulation_raw, dim=1)  # Shape: (d, d)

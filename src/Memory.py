@@ -1,4 +1,3 @@
-# ...existing code...
 import torch
 
 class ShortTermMemory:
@@ -45,4 +44,3 @@ class LongTermMemory:
 
     def clear_memory(self):
         self.knowledge_base.clear()
-# ...existing code...

@@ -10,7 +10,7 @@ class TaskEncoder:
         inputs = self.tokenizer(query, return_tensors='pt')
         with torch.no_grad():
             outputs = self.model(**inputs)
-        return outputs.last_hidden_state
+        return outputs.last_hidden_state.squeeze(0)  # Shape: (sequence_length, hidden_size)
 
     def get_vector_representation(self, encoded_task):
-        return torch.mean(encoded_task, dim=1).squeeze().tolist()
+        return torch.mean(encoded_task, dim=0)  # Shape: (hidden_size,)
