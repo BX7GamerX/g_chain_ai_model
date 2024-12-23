@@ -52,11 +52,10 @@ class AICodingAssistant:
         self.output_decoder = output_decoder
         
         # Initialize PhysicsInspiredReset with access to the network
-        initial_weights = initial_weights if initial_weights is not None else self.network.get_weights()
         self.physics_reset = PhysicsInspiredReset(
-            initial_weights=initial_weights,
-            network=self.network,
-            beta=beta
+            network=network,
+            beta=beta,
+            initial_weights=network.get_weights()
         )
 
     def process_user_request(self, user_prompt: str, apply_reset: bool = False) -> str:
@@ -65,9 +64,9 @@ class AICodingAssistant:
             encoded_prompt = self.task_encoder.encode_task(user_prompt)
             embedding_vector = torch.mean(encoded_prompt, dim=1)
             
-            # Adjust network weights if necessary
-            # ... [weight adjustment logic]
-
+            # Forward pass to get output_tensor
+            output_tensor = self.network.forward_propagation(embedding_vector)  # Moved forward_propagation before decode_output
+            
             if not isinstance(embedding_vector, torch.Tensor) or embedding_vector.numel() == 0:
                 raise ValueError("Invalid embedding vector provided.")
             if output_tensor is None or output_tensor.numel() == 0:
@@ -77,27 +76,22 @@ class AICodingAssistant:
                 return "Failed to process the request due to unexpected output tensor shape."
             
             code_snippet = self.output_decoder.decode_output(output_tensor, method="argmax")
-            output_tensor = self.network.forward_propagation(embedding_vector)
-            code_snippet = self.output_decoder.decode_output(output_tensor, method="argmax")
             
             # Store in memory
             self.store_in_memory(user_prompt, is_long_term=True)
             self.store_in_memory(code_snippet, is_long_term=False)
             
-            if output_tensor is None or output_tensor.numel() == 0:
-                return "Failed to process the request due to XYZ reason."
-            
             # Apply reset if requested
             if apply_reset:
-                import traceback
-                error_message = f"An error occurred: {str(e)}\n{traceback.format_exc()}"
-            
+                self.physics_reset.reset_parameters(self.network.get_weights())  # Corrected reset call
+                
             return code_snippet
 
         except Exception as e:
             # Handle failure and return an error message
             error_message = f"An error occurred: {str(e)}"
             return error_message  # Return as string
+
     def store_in_memory(self, data: str, long_term: bool = False):
         """
         Convenience method to store data in memory modules.

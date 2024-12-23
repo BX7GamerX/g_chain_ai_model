@@ -13,6 +13,10 @@ class NeuralNetworkCore:
                 if layer.bias is not None:
                     nn.init.constant_(layer.bias, 0)
         self.initial_state = self.get_weights()
+        
+        # Ensure initial_state is stored correctly
+        if not self.initial_state:
+            raise RuntimeError("Failed to store initial weights after initialization.")
 
     # In src/NeuralNetworkCore.py
     def forward_propagation(self, input_vector):

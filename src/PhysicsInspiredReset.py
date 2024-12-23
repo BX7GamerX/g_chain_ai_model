@@ -1,5 +1,6 @@
 import torch
-from NeuralNetworkCore import NeuralNetworkCore 
+import torch.nn as nn
+
 class PhysicsInspiredReset:
     """
     Implements a thermodynamics-inspired reset mechanism:
@@ -11,35 +12,43 @@ class PhysicsInspiredReset:
     This ensures a controlled 'cooling' effect, akin to simulated annealing.
     """
 
-    def __init__(self, initial_weights, network: NeuralNetworkCore, beta=0.5):
-        """
-        Args:
-            initial_weights (list of dict): Each dict in the list corresponds to a layer's
-                {'weight': tensor, 'bias': tensor or None}.
-            network (NeuralNetworkCore): The neural network instance.
-            beta (float): The reset strength factor in [0, 1].            
-        """
-        self.initial_weights = initial_weights
-        self.network = network  # Store the network instance
-        self.beta = beta
-
-    def reset_parameters(self, current_weights):
-        """
-        Resets current weights toward their initial values, applying the
-        thermodynamic-inspired formula:
-            new_state = (1 - beta) * current + beta * initial
-
-        Args:
-            current_weights (list of dict): Current weights and biases for each layer.
-
-        Returns:
-            list of dict: The updated state reflecting partial reset toward initial values.
-        """
-        updated_weights = []
-        for current, initial in zip(current_weights, self.initial_weights):
-            new_weight = (1 - self.beta) * current['weight'] + self.beta * initial['weight']
-            new_bias = (1 - self.beta) * current.get('bias', torch.zeros_like(new_weight)) + self.beta * initial.get('bias', torch.zeros_like(new_weight))
-            updated_weights.append({'weight': new_weight, 'bias': new_bias})
+    def __init__(self, network: nn.Module, beta: float = 0.5):
+        """Initialize with network and reset strength.
         
-        self.network.set_weights(updated_weights)
-        return updated_weights
+        Args:
+            network: Neural network to reset
+            beta: Reset strength (0 = no reset, 1 = full reset)
+        """
+        self.network = network
+        self.beta = beta
+        
+        # Store initial weights as deep copy
+        self.initial_weights = []
+        with torch.no_grad():
+            for name, param in network.named_parameters():
+                if 'weight' in name or 'bias' in name:
+                    self.initial_weights.append({
+                        'name': name,
+                        'data': param.data.clone().detach()
+                    })
+
+    def reset_parameters(self):
+        """Reset network parameters using stored initial weights and beta value."""
+        print(f"Resetting with beta = {self.beta}")
+        with torch.no_grad():
+            for stored, (name, param) in zip(self.initial_weights, self.network.named_parameters()):
+                if name == stored['name']:
+                    # Calculate new values
+                    current = param.data
+                    initial = stored['data']
+                    new_value = (1 - self.beta) * current + self.beta * initial
+                    
+                    # Debug info
+                    diff_before = (current - initial).abs().mean().item()
+                    diff_after = (new_value - initial).abs().mean().item()
+                    print(f"{name}: diff before={diff_before:.6f}, after={diff_after:.6f}")
+                    
+                    # Update parameter
+                    param.data.copy_(new_value)
+        
+        return self.network.state_dict()

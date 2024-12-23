@@ -1,7 +1,7 @@
 import unittest
 import sys
 import os
-
+import torch
 # Adjust Python path to import our modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
@@ -54,7 +54,6 @@ class TestAICodingAssistant(unittest.TestCase):
             task_encoder=self.task_encoder,
             feedback_engine=self.feedback_engine,
             output_decoder=self.output_decoder,
-            initial_weights=initial_weights,
             beta=0.5
         )
 
@@ -72,16 +71,42 @@ class TestAICodingAssistant(unittest.TestCase):
         self.assertIsNotNone(stm_state, "Short-term memory should have new context after failing snippet refinement.")
 
     def test_physics_reset(self):
-        # Provide a prompt and request a reset afterwards
-        user_prompt = "Testing partial reset."
-        _ = self.assistant.process_user_request(user_prompt, apply_reset=True)
-        # Check if the weights were partially reset
-        current_weights = self.network.get_weights()
-        # We expect partial difference from initial
-        for init_dict, curr_dict in zip(self.assistant.physics_reset.initial_weights, current_weights):
-            diff = (init_dict['weight'] - curr_dict['weight']).abs().mean().item()
-            self.assertGreater(diff, 0.0, "Weights should not be identical to initial if beta < 1.")
-            self.assertLess(diff, 0.5, "Weights should be partially, not fully reset.")
+        # 1. Store initial state
+        initial_weights = [
+            {
+                'weight': w['weight'].clone().detach(),
+                'bias': w['bias'].clone().detach() if w['bias'] is not None else None
+            }
+            for w in self.network.get_weights()
+        ]
+        
+        # 2. Modify weights significantly
+        with torch.no_grad():
+            for layer in self.network.layers:
+                if isinstance(layer, nn.Linear):
+                    # Add significant modification
+                    layer.weight.add_(torch.ones_like(layer.weight) * 0.2)
+                    if layer.bias is not None:
+                        layer.bias.add_(torch.ones_like(layer.bias) * 0.2)
+        
+        # 3. Verify weights changed
+        pre_reset_weights = self.network.get_weights()
+        weight_diffs_before = []
+        for i, (init, current) in enumerate(zip(initial_weights, pre_reset_weights)):
+            diff = (init['weight'] - current['weight']).abs().mean().item()
+            weight_diffs_before.append(diff)
+            print(f"Layer {i} diff before reset: {diff}")
+        
+        # 4. Apply reset
+        _ = self.assistant.process_user_request("Testing reset", apply_reset=True)
+        
+        # 5. Check reset effect
+        post_reset_weights = self.network.get_weights()
+        for i, (init, post) in enumerate(zip(initial_weights, post_reset_weights)):
+            diff = (init['weight'] - post['weight']).abs().mean().item()
+            print(f"Layer {i} diff after reset: {diff}")
+            self.assertGreater(diff, 0.0, f"Layer {i}: Weights should not be identical to initial")
+            self.assertLess(diff, weight_diffs_before[i], f"Layer {i}: Reset should move weights closer to initial")
 
     def test_memory_store_and_retrieve(self):
         self.assistant.store_in_memory("test data", long_term=False)

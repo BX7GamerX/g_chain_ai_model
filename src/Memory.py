@@ -44,3 +44,19 @@ class LongTermMemory:
 
     def clear_memory(self):
         self.knowledge_base.clear()
+
+class MemoryManager:
+    def __init__(self):
+        self.short_mem = ShortTermMemory()
+        self.long_mem = LongTermMemory()
+
+    def retrieve_memory(self, long_term=False, index=None):
+        if long_term:
+            memory = self.long_mem.retrieve_memory(index)
+        else:
+            memory = self.short_mem.get_memory_state()
+        
+        if memory is None or (index is not None and (index < 0 or index >= len(memory))):
+            raise IndexError("Memory index out of range.")
+        
+        return memory

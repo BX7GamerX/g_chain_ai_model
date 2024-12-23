@@ -2,6 +2,7 @@ import subprocess
 import tempfile
 import os
 import torch
+import torch.nn.functional as F
 
 from DynamicWeightAdapter import DynamicWeightAdapter
 from Memory import ShortTermMemory, LongTermMemory
@@ -45,7 +46,7 @@ class FeedbackEngine:
 
     def evaluate_code(self, code_snippet: str):
         """
-        Executes code_snippet in a sandboxed environment and reports the exit status/output.
+        Executes code_snippet in an isolated environment and reports the exit status/output.
         Returns a dictionary containing 'success' (bool) and 'output' (str).
         """
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp_file:
@@ -90,26 +91,28 @@ class FeedbackEngine:
         and you can store persistent knowledge in long-term memory if needed.
         """
         # Encode the feedback to produce a modulation vector
-        encoded_feedback = self.task_encoder.encode_task(feedback).mean(dim=0)
-        code_embedding = self.task_encoder.encode_task(current_code).mean(dim=0)
+        encoded_feedback = self.task_encoder.encode_task(feedback).mean(dim=1)  # Changed dim from 0 to 1
+        code_embedding = self.task_encoder.encode_task(current_code).mean(dim=1)  # Changed dim from 0 to 1
 
         # Compute a modulation tensor matching the first linear layer shape (e.g., [out_features, in_features])
-        # In practice, you might generate more context-based shapes for multiple layers.
         modulation_mat = self.weight_adapter.compute_modulation_tensor(encoded_feedback, code_embedding)
 
         # Build a list of modulation_tensors for each Linear layer
-        # For a simpler approach, fill each layer's shape with the mean of modulation_mat
         modulation_tensors = []
         for layer in self.network.layers:
             if hasattr(layer, "weight") and layer.weight is not None:
-                # create a broadcasted version of the mean, same shape as layer.weight
-                mean_val = modulation_mat.mean().item()
-                modulation_tensors.append(torch.ones_like(layer.weight) * mean_val)
-
+                # Ensure modulation_mat matches layer weight dimensions
+                if modulation_mat.shape != layer.weight.shape:
+                    modulation_mat_resized = F.interpolate(modulation_mat.unsqueeze(0), size=layer.weight.shape, mode='bilinear').squeeze(0)
+                    modulation_tensors.append(modulation_mat_resized)
+                else:
+                    modulation_tensors.append(modulation_mat)
+    
         # Adjust weights
         self.network.adjust_weights(modulation_tensors)
 
         # Update short-term memory with the feedback
+        mean_val = modulation_mat.mean().item()  # Define mean_val before using
         self.short_mem.update_memory(torch.tensor([mean_val]))
 
         # Optionally persist something in long-term memory
