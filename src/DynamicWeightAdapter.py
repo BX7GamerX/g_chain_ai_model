@@ -28,8 +28,11 @@ class DynamicWeightAdapter:
         if key.dim() == 1:
             key = key.unsqueeze(0)      # Shape: (1, d)
 
-        # Compute the raw modulation matrix via outer product
-        modulation_raw = torch.matmul(query.mT, key)  # Shape: (d, d)
+        # Check dimensions
+        assert query.size(1) == key.size(1), "Query and Key must have the same embedding dimension."
+
+        # Compute the modulation matrix via batch matrix multiplication
+        modulation_raw = torch.matmul(query.t(), key)  # Shape: (d, d)
 
         # Apply softmax to normalize the modulation tensor
         modulation = F.softmax(modulation_raw, dim=1)  # Shape: (d, d)

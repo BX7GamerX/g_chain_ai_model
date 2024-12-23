@@ -9,23 +9,32 @@ class NeuralNetworkCore:
     def initialize_network(self):
         for layer in self.layers:
             if isinstance(layer, nn.Linear):
-                nn.init.xavier_uniform_(layer.weight)
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
                 if layer.bias is not None:
-                    nn.init.zeros_(layer.bias)
+                    nn.init.constant_(layer.bias, 0)
         self.initial_state = self.get_weights()
 
+    # In src/NeuralNetworkCore.py
     def forward_propagation(self, input_vector):
         if isinstance(input_vector, list):
-            x = torch.tensor(input_vector, dtype=torch.float32)
+            x = torch.tensor(input_vector).float()
         elif isinstance(input_vector, torch.Tensor):
             x = input_vector.float()
         else:
             raise TypeError("input_vector must be a list or a torch.Tensor")
-
+    
+        # Ensure input shape matches first layer (batch_size, input_size)
+        if x.dim() == 1:
+            x = x.unsqueeze(0)  # Shape: (1, input_size)
+    
+        # Forward pass through layers
         for layer in self.layers:
             x = layer(x)
-            if isinstance(layer, nn.ReLU):
-                x = torch.relu(x)
+    
+        # Ensure output matches expected size
+        if x.dim() == 2 and x.size(0) == 1:
+            x = x.squeeze(0)  # Shape: (output_size,)
+    
         return x
 
     def adjust_weights(self, modulation_tensors):
@@ -61,17 +70,14 @@ class NeuralNetworkCore:
         ]
 
     def set_weights(self, weights):
-        linear_layers = [layer for layer in self.layers if isinstance(layer, nn.Linear)]
-        if len(weights) != len(linear_layers):
-            raise ValueError("Number of weight dicts must match number of Linear layers.")
+        """
+        Sets the network's weights and biases.
 
-        for layer, wdict in zip(linear_layers, weights):
-            if 'weight' not in wdict or 'bias' not in wdict:
-                raise KeyError("Each dictionary must contain 'weight' and 'bias' keys.")
-            if wdict['weight'].shape != layer.weight.shape:
-                raise ValueError("Weight shape mismatch.")
-            layer.weight.data.copy_(wdict['weight'])
-            if layer.bias is not None and wdict['bias'] is not None:
-                if wdict['bias'].shape != layer.bias.shape:
-                    raise ValueError("Bias shape mismatch.")
-                layer.bias.data.copy_(wdict['bias'])
+        Args:
+            weights (list of dict): Each dict contains 'weight' and 'bias' tensors for a layer.
+        """
+        linear_layers = [layer for layer in self.layers if isinstance(layer, nn.Linear)]
+        for layer, weight_dict in zip(linear_layers, weights):
+            layer.weight.data = weight_dict['weight'].clone()
+            if layer.bias is not None and weight_dict['bias'] is not None:
+                layer.bias.data = weight_dict['bias'].clone()

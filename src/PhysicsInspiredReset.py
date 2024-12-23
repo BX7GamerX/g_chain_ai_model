@@ -1,5 +1,5 @@
 import torch
-
+from NeuralNetworkCore import NeuralNetworkCore 
 class PhysicsInspiredReset:
     """
     Implements a thermodynamics-inspired reset mechanism:
@@ -11,14 +11,16 @@ class PhysicsInspiredReset:
     This ensures a controlled 'cooling' effect, akin to simulated annealing.
     """
 
-    def __init__(self, initial_weights, beta=0.5):
+    def __init__(self, initial_weights, network: NeuralNetworkCore, beta=0.5):
         """
         Args:
             initial_weights (list of dict): Each dict in the list corresponds to a layer's
                 {'weight': tensor, 'bias': tensor or None}.
+            network (NeuralNetworkCore): The neural network instance.
             beta (float): The reset strength factor in [0, 1].            
         """
         self.initial_weights = initial_weights
+        self.network = network  # Store the network instance
         self.beta = beta
 
     def reset_parameters(self, current_weights):
@@ -33,12 +35,11 @@ class PhysicsInspiredReset:
         Returns:
             list of dict: The updated state reflecting partial reset toward initial values.
         """
-        new_state = []
-        for init_dict, curr_dict in zip(self.initial_weights, current_weights):
-            w_new = (1 - self.beta) * curr_dict['weight'] + self.beta * init_dict['weight']
-            b_new = None
-            if init_dict['bias'] is not None and curr_dict['bias'] is not None:
-                b_new = (1 - self.beta) * curr_dict['bias'] + self.beta * init_dict['bias']
-            new_state.append({'weight': w_new, 'bias': b_new})
-
-        return new_state
+        updated_weights = []
+        for current, initial in zip(current_weights, self.initial_weights):
+            new_weight = (1 - self.beta) * current['weight'] + self.beta * initial['weight']
+            new_bias = (1 - self.beta) * current.get('bias', torch.zeros_like(new_weight)) + self.beta * initial.get('bias', torch.zeros_like(new_weight))
+            updated_weights.append({'weight': new_weight, 'bias': new_bias})
+        
+        self.network.set_weights(updated_weights)
+        return updated_weights

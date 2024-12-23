@@ -50,69 +50,71 @@ class AICodingAssistant:
         self.task_encoder = task_encoder
         self.feedback_engine = feedback_engine
         self.output_decoder = output_decoder
-
-        # Initialize optional physics-inspired resetting
-        self.physical_resetter = None
-        if initial_weights is not None:
-            self.physical_resetter = PhysicsInspiredReset(initial_weights, beta=beta)
+        
+        # Initialize PhysicsInspiredReset with access to the network
+        initial_weights = initial_weights if initial_weights is not None else self.network.get_weights()
+        self.physics_reset = PhysicsInspiredReset(
+            initial_weights=initial_weights,
+            network=self.network,
+            beta=beta
+        )
 
     def process_user_request(self, user_prompt: str, apply_reset: bool = False) -> str:
-        """
-        Main entry point to:
-        1) Encode user prompt into embeddings.
-        2) Pass through NeuralNetworkCore -> produce output tensor.
-        3) Decode with OutputDecoder.
-        4) Optionally apply code evaluation+feedback loop.
+        try:
+            # Encode the task
+            encoded_prompt = self.task_encoder.encode_task(user_prompt)
+            embedding_vector = torch.mean(encoded_prompt, dim=1)
+            
+            # Adjust network weights if necessary
+            # ... [weight adjustment logic]
 
-        Args:
-            user_prompt (str): The user's request.
-            apply_reset (bool): If True, applies partial reset after generation.
+            if not isinstance(embedding_vector, torch.Tensor) or embedding_vector.numel() == 0:
+                raise ValueError("Invalid embedding vector provided.")
+            if output_tensor is None or output_tensor.numel() == 0:
+                return "Failed to process the request due to empty output tensor."
+            
+            if len(output_tensor.shape) != 2 or output_tensor.shape[1] == 0:
+                return "Failed to process the request due to unexpected output tensor shape."
+            
+            code_snippet = self.output_decoder.decode_output(output_tensor, method="argmax")
+            output_tensor = self.network.forward_propagation(embedding_vector)
+            code_snippet = self.output_decoder.decode_output(output_tensor, method="argmax")
+            
+            # Store in memory
+            self.store_in_memory(user_prompt, is_long_term=True)
+            self.store_in_memory(code_snippet, is_long_term=False)
+            
+            if output_tensor is None or output_tensor.numel() == 0:
+                return "Failed to process the request due to XYZ reason."
+            
+            # Apply reset if requested
+            if apply_reset:
+                import traceback
+                error_message = f"An error occurred: {str(e)}\n{traceback.format_exc()}"
+            
+            return code_snippet
 
-        Returns:
-            str: The generated or refined code snippet.
-        """
-        # 1) Encode request
-        encoded_prompt = self.task_encoder.encode_task(user_prompt)
-        embedding_vector = torch.mean(encoded_prompt, dim=0)
-
-        # 2) Forward pass
-        output_tensor = self.network.forward_propagation(embedding_vector)
-
-        # 3) Decode to code snippet
-        code_snippet = self.output_decoder.decode_output(output_tensor, method="argmax")
-
-        # 4) Optionally evaluate code snippet and refine
-        evaluation = self.feedback_engine.evaluate_code(code_snippet)
-        feedback = self.feedback_engine.generate_feedback(evaluation)
-
-        # If code fails, refine network
-        if not evaluation["success"]:
-            self.feedback_engine.refine_network(code_snippet, feedback)
-
-        # Optionally apply physics-inspired reset
-        if apply_reset and self.physical_resetter is not None:
-            current_weights = self.network.get_weights()
-            new_state = self.physical_resetter.reset_parameters(current_weights)
-            self.network.set_weights(new_state)
-
-        return code_snippet
-
+        except Exception as e:
+            # Handle failure and return an error message
+            error_message = f"An error occurred: {str(e)}"
+            return error_message  # Return as string
     def store_in_memory(self, data: str, long_term: bool = False):
         """
         Convenience method to store data in memory modules.
         """
-        tensor_data = torch.tensor([ord(c) for c in data], dtype=torch.float)
+        tensor_data = torch.tensor([ord(c) for c in data], dtype=torch.float32)
         if long_term:
             self.long_mem.store_memory(tensor_data)
         else:
             self.short_mem.update_memory(tensor_data)
 
-    def retrieve_memory(self, index=None, long_term: bool = False):
-        """
-        Convenience method to retrieve data from memory modules.
-        """
+    def retrieve_memory(self, long_term=False, index=None):
         if long_term:
-            return self.long_mem.retrieve_memory(index=index)
+            memory = self.long_mem.retrieve_memory(index)
         else:
-            stm_state = self.short_mem.get_memory_state()
-            return stm_state if stm_state is not None else None
+            memory = self.short_mem.get_memory_state()
+        
+        if memory is None or (index is not None and (index < 0 or index >= len(memory))):
+            raise IndexError("Memory index out of range.")
+        
+        return memory

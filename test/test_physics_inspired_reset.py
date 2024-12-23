@@ -38,13 +38,15 @@ class TestPhysicsInspiredReset(unittest.TestCase):
         
         self.modified_state = self.network.get_weights()
 
+    
+
     def test_partial_reset(self):
         """
         Test that with a beta value in (0, 1), weights and biases
         are partially reset toward their initial state.
         """
         beta = 0.5
-        resetter = PhysicsInspiredReset(self.initial_state, beta=beta)
+        resetter = PhysicsInspiredReset(self.initial_state, self.network, beta=beta)
         new_state = resetter.reset_parameters(self.modified_state)
         
         # Check that each layer's weights are an interpolation of modified and initial:
@@ -68,7 +70,7 @@ class TestPhysicsInspiredReset(unittest.TestCase):
         Test that with beta=0, no reset occurs (new state == modified state).
         """
         beta = 0.0
-        resetter = PhysicsInspiredReset(self.initial_state, beta=beta)
+        resetter = PhysicsInspiredReset(self.initial_state, self.network, beta=beta)
         new_state = resetter.reset_parameters(self.modified_state)
 
         for mod_dict, new_dict in zip(self.modified_state, new_state):
@@ -87,7 +89,7 @@ class TestPhysicsInspiredReset(unittest.TestCase):
         Test that with beta=1, full reset occurs (new state == initial state).
         """
         beta = 1.0
-        resetter = PhysicsInspiredReset(self.initial_state, beta=beta)
+        resetter = PhysicsInspiredReset(self.initial_state, self.network, beta=beta)
         new_state = resetter.reset_parameters(self.modified_state)
 
         for init_dict, new_dict in zip(self.initial_state, new_state):
